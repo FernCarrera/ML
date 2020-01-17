@@ -3,46 +3,79 @@ from pandas.plotting import scatter_matrix
 import matplotlib.pyplot as plt
 import numpy as np
 from sklearn.preprocessing import OneHotEncoder,StandardScaler,OrdinalEncoder
-from sklearn.pipeline import Pipeline
+from sklearn.pipeline import Pipeline,FeatureUnion
 from sklearn.compose import ColumnTransformer
 from sklearn.impute import SimpleImputer
-from sklearn.ensemble import RandomForestRegressor
-from sklearn.metrics import mean_squared_error
-from custom_trans import AttributesManager
-
+from sklearn.ensemble import RandomForestClassifier
+#from sklearn.metrics import mean_squared_error
+from sklearn.model_selection import cross_val_score
+from custom_trans import AttributesManager,DataFrameSelector,MostFrequentImputer
+from sklearn.svm import SVC
+import csv
 
 train_set = pd.read_csv("train.csv")
-#train_set_N = train_set.drop("Survived",axis=1)
-#train_set_N = train_set_N.drop("Cabin",axis=1)
+test_set = pd.read_csv("test.csv")
 
-#train_set_N["Embarked"].fillna('S',inplace=True)
-#train_set_N.info()
+num_atts = ["Age","SibSp","Parch","Fare"]
+# Numerical pipeline
+num_pipeline = Pipeline([
+                ("Select_numeric",DataFrameSelector(num_atts)),
+                ("imputer",SimpleImputer(strategy="median"))
+])
 
-#print(train_set_N.info())
-#train_set_N = train_set_N.select_dtypes(exclude=['object'])
+num = num_pipeline.fit_transform(train_set)
+
+cat_atts = ["Pclass","Sex","Embarked"]
+
+cat_pipeline = Pipeline([
+            ("Select_cat",DataFrameSelector(cat_atts)),
+            ("imputer",MostFrequentImputer()),
+            ("cat_encoder",OneHotEncoder(sparse=False))
+])
+
+cat = cat_pipeline.fit_transform(train_set)
+
+pre_pipeline = FeatureUnion(transformer_list=[
+                ("num_pipeline",num_pipeline),
+                ("cat_pipeline",cat_pipeline),   
+])
+
+final = np.hstack((num,cat))
+#print(final)
+
+train = pre_pipeline.fit_transform(train_set)
+y_train = train_set["Survived"]
 
 
+#svm_clf = SVC(gamma="auto")
+#svm_clf.fit(train,y_train)
 
-# study correlations
-#corr_matrix = train_set.corr()
-#print(corr_matrix["Survived"].sort_values(ascending=False))
+forest_clf = RandomForestClassifier(n_estimators=150)
+#forest_scores = cross_val_score(forest_clf,train,y_train,cv=10)
+
+# test code
+forest_clf.fit(train,y_train)
+num_test = num_pipeline.fit_transform(test_set)
+cat_test = cat_pipeline.fit_transform(test_set)
+final_test = np.hstack((num_test,cat_test))
+
+#test = pre_pipeline.fit(final_test)
+#print(test)
+y_test = forest_clf.predict(final_test)
+#print(y_test)
+passId = test_set["PassengerId"].astype('int32')
+surv = y_test
+ans = [passId,surv]
+ans = list(map(list,zip(*ans)))
+print(np.shape(ans))
+
+with open('output.csv','w') as result:
+    wr = csv.writer(result,dialect='excel')
+    wr.writerows(ans)
 """
-Survived       1.000000
-Fare           0.257307
-Parch          0.081629
-PassengerId   -0.005007
-SibSp         -0.035322
-Age           -0.077221
-Pclass        -0.338481     1:1st,2:2nd,3:3rd class
-Name: Survived, dtype: float64
-"""
+    My solution:
+Pipeline to deal with the numerical attributes
 
-
-
-
-
-"""Pipeline to deal with the numerical attributes
-"""
 # imputer fills out missing items with the average value
 num_pipeline = Pipeline([('imputer',SimpleImputer(strategy="mean")),
                         ('std_scaleer',StandardScaler())])
@@ -59,14 +92,6 @@ full_pipeline = ColumnTransformer([
 # prepared data
 titanic_prepared = full_pipeline.fit_transform(train_set)
 
-"""
-tree_reg = RandomForestRegressor()
-tree_reg.fit(train_prepared,train_labels)
-
-predictions = tree_reg.predict(train_prepared)
-tree_mse = mean_squared_error(train_labels,predictions)
-tree_rmse = np.sqrt(tree_mse)
-print(tree_rmse)
 """
 
 
